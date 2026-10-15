@@ -1,0 +1,44 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot and Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y wget unzip openjdk-17-jdk
+          wget -q https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip -O godot.zip
+          unzip -q godot.zip
+          sudo install -m 0755 Godot_v4.4.1-stable_linux.x86_64 /usr/local/bin/godot
+          wget -q https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz -O templates.tpz
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          unzip -q templates.tpz -d /tmp/godot-templates
+          find /tmp/godot-templates -type f -maxdepth 3
+          cp /tmp/godot-templates/templates/* "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline.zip
+          mkdir -p "$HOME/android-sdk/cmdline-tools/latest"
+          unzip -q cmdline.zip -d /tmp/android-cmd
+          mv /tmp/android-cmd/cmdline-tools/* "$HOME/android-sdk/cmdline-tools/latest/"
+          echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "$HOME/android-sdk/platform-tools" >> "$GITHUB_PATH"
+          yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" --licenses >/dev/null || true
+          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - name: Import project
+        run: godot --headless --editor --path . --import
+      - name: Export debug APK
+        run: godot --headless --path . --editor --export-debug "Android" BLACKOUT-Last-Signal.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BLACKOUT-Last-Signal-APK
+          path: BLACKOUT-Last-Signal.apk
+          if-no-files-found: error
